@@ -98,18 +98,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         console.log('Profile updated with name:', name);
         
-        // Update the local user state with the updated profile
-        const updatedUser = formatUser({
-          ...userCredential.user,
-          displayName: name
-        });
-        
-        setUser(updatedUser);
-        localStorage.setItem('user', JSON.stringify(updatedUser));
+        // Sign out the user after registration is complete
+        await signOut(auth);
+        setUser(null);
+        localStorage.removeItem('user');
       }
       
-      toast.success('Đăng ký thành công');
-      navigate('/dashboard');
+      toast.success('Đăng ký thành công! Vui lòng đăng nhập.');
+      navigate('/'); // Redirect to the login page
     } catch (error: any) {
       console.error('Registration error:', error);
       let errorMessage = 'Đăng ký thất bại. Vui lòng thử lại.';

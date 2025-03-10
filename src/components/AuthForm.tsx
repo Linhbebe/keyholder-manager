@@ -15,6 +15,7 @@ const AuthForm: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [errors, setErrors] = useState<{
     name?: string;
     email?: string;
@@ -59,7 +60,7 @@ const AuthForm: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -68,7 +69,18 @@ const AuthForm: React.FC = () => {
     
     if (isRegistering) {
       console.log('Submitting registration form with:', { name, email, password: '***' });
-      register(name, email, password);
+      try {
+        await register(name, email, password);
+        // After successful registration, clear the form and show success message
+        setName('');
+        setEmail('');
+        setPassword('');
+        setConfirmPassword('');
+        setIsRegistering(false);
+        setRegistrationSuccess(true);
+      } catch (error) {
+        console.error("Registration error:", error);
+      }
     } else {
       console.log('Submitting login form with:', { email, password: '***' });
       login(email, password);
@@ -78,6 +90,7 @@ const AuthForm: React.FC = () => {
   const toggleAuthMode = () => {
     setIsRegistering(!isRegistering);
     setErrors({});
+    setRegistrationSuccess(false);
   };
 
   return (
@@ -89,7 +102,9 @@ const AuthForm: React.FC = () => {
         <CardDescription className="text-center">
           {isRegistering
             ? 'Tạo tài khoản để quản lý khóa điện tử của bạn'
-            : 'Đăng nhập để quản lý khóa điện tử của bạn'}
+            : registrationSuccess 
+              ? 'Đăng ký thành công! Vui lòng đăng nhập để tiếp tục.'
+              : 'Đăng nhập để quản lý khóa điện tử của bạn'}
         </CardDescription>
       </CardHeader>
       <CardContent>
