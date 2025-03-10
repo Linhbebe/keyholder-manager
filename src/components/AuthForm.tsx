@@ -5,29 +5,113 @@ import Button from '@/components/ui-custom/Button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui-custom/Card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, User } from 'lucide-react';
 
 const AuthForm: React.FC = () => {
-  const { login, isLoading } = useAuth();
+  const { login, register, isLoading } = useAuth();
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [errors, setErrors] = useState<{
+    name?: string;
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+  }>({});
+
+  const validateForm = () => {
+    const newErrors: {
+      name?: string;
+      email?: string;
+      password?: string;
+      confirmPassword?: string;
+    } = {};
+    
+    // Validate email
+    if (!email) {
+      newErrors.email = 'Email là bắt buộc';
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      newErrors.email = 'Email không hợp lệ';
+    }
+    
+    // Validate password
+    if (!password) {
+      newErrors.password = 'Mật khẩu là bắt buộc';
+    } else if (password.length < 6) {
+      newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
+    }
+    
+    // Additional validations for registration
+    if (isRegistering) {
+      if (!name) {
+        newErrors.name = 'Tên là bắt buộc';
+      }
+      
+      if (password !== confirmPassword) {
+        newErrors.confirmPassword = 'Mật khẩu không khớp';
+      }
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    login(email, password);
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    if (isRegistering) {
+      register(name, email, password);
+    } else {
+      login(email, password);
+    }
+  };
+
+  const toggleAuthMode = () => {
+    setIsRegistering(!isRegistering);
+    setErrors({});
   };
 
   return (
-    <Card variant="glass" className="w-full max-w-md mx-auto animate-fade-in">
+    <Card variant="glass" className="w-full max-w-md mx-auto animate-fade-in" style={{ backdropFilter: 'blur(10px)' }}>
       <CardHeader>
-        <CardTitle className="text-2xl text-center">Đăng nhập</CardTitle>
+        <CardTitle className="text-2xl text-center">
+          {isRegistering ? 'Đăng ký' : 'Đăng nhập'}
+        </CardTitle>
         <CardDescription className="text-center">
-          Đăng nhập để quản lý khóa điện tử của bạn
+          {isRegistering
+            ? 'Tạo tài khoản để quản lý khóa điện tử của bạn'
+            : 'Đăng nhập để quản lý khóa điện tử của bạn'}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {isRegistering && (
+            <div className="space-y-2">
+              <Label htmlFor="name">Họ tên</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Nhập họ tên của bạn"
+                  className="pl-10"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              {errors.name && (
+                <p className="text-sm font-medium text-destructive mt-1">{errors.name}</p>
+              )}
+            </div>
+          )}
+          
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <div className="relative">
@@ -35,14 +119,17 @@ const AuthForm: React.FC = () => {
               <Input
                 id="email"
                 type="email"
-                placeholder="nhập email của bạn"
+                placeholder="Nhập email của bạn"
                 className="pl-10"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
               />
             </div>
+            {errors.email && (
+              <p className="text-sm font-medium text-destructive mt-1">{errors.email}</p>
+            )}
           </div>
+          
           <div className="space-y-2">
             <Label htmlFor="password">Mật khẩu</Label>
             <div className="relative">
@@ -50,11 +137,10 @@ const AuthForm: React.FC = () => {
               <Input
                 id="password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="nhập mật khẩu của bạn"
+                placeholder="Nhập mật khẩu của bạn"
                 className="pl-10"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
               />
               <button
                 type="button"
@@ -68,16 +154,55 @@ const AuthForm: React.FC = () => {
                 )}
               </button>
             </div>
+            {errors.password && (
+              <p className="text-sm font-medium text-destructive mt-1">{errors.password}</p>
+            )}
           </div>
-          <div className="text-right">
-            <a href="#" className="text-sm text-primary hover:underline">
-              Quên mật khẩu?
-            </a>
-          </div>
+          
+          {isRegistering && (
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Xác nhận mật khẩu</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="confirmPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Nhập lại mật khẩu của bạn"
+                  className="pl-10"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+              {errors.confirmPassword && (
+                <p className="text-sm font-medium text-destructive mt-1">{errors.confirmPassword}</p>
+              )}
+            </div>
+          )}
+          
+          {!isRegistering && (
+            <div className="text-right">
+              <a href="#" className="text-sm text-primary hover:underline">
+                Quên mật khẩu?
+              </a>
+            </div>
+          )}
+          
           <Button className="w-full" loading={isLoading}>
-            Đăng nhập
+            {isRegistering ? 'Đăng ký' : 'Đăng nhập'}
           </Button>
         </form>
+        
+        <div className="text-center mt-4">
+          <button
+            type="button"
+            className="text-sm text-primary hover:underline"
+            onClick={toggleAuthMode}
+          >
+            {isRegistering
+              ? 'Đã có tài khoản? Đăng nhập'
+              : 'Chưa có tài khoản? Đăng ký ngay'}
+          </button>
+        </div>
       </CardContent>
     </Card>
   );

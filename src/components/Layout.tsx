@@ -1,8 +1,8 @@
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Home, Key, User, LogOut, Menu, X } from 'lucide-react';
+import { Home, Key, User, LogOut, Menu, X, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -18,7 +18,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useState(false);
 
   const menuItems = [
     { icon: Home, label: 'Trang chủ', path: '/dashboard' },
@@ -42,7 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-10 w-full border-b border-border/40 backdrop-blur-md bg-background/80 px-4">
+      <header className="sticky top-0 z-10 w-full border-b border-border/40 backdrop-blur-md bg-background/80 px-2 sm:px-4">
         <div className="container mx-auto h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {isMobile ? (
@@ -52,12 +52,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[250px] sm:w-[300px]">
+                <SheetContent side="left" className="w-[80vw] max-w-[300px]">
                   <div className="flex flex-col h-full py-6">
                     <div className="flex items-center px-4">
                       <Key className="h-6 w-6 text-primary mr-2" />
                       <h2 className="text-lg font-semibold">SmartKey</h2>
                     </div>
+                    {user && (
+                      <div className="mt-6 px-4 py-3 bg-accent/50 rounded-lg flex items-center">
+                        <Avatar className="h-10 w-10 mr-3 border border-border">
+                          {user.avatar ? (
+                            <AvatarImage src={user.avatar} alt={user.name} />
+                          ) : (
+                            <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                          )}
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{user.name}</p>
+                          <p className="text-xs text-muted-foreground">{user.email}</p>
+                        </div>
+                      </div>
+                    )}
                     <nav className="mt-8 flex-1">
                       <ul className="space-y-2 px-2">
                         {menuItems.map((item) => (
@@ -132,7 +147,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   )}
                 </Avatar>
                 {!isMobile && (
-                  <div className="flex flex-col">
+                  <div className="hidden md:flex flex-col">
                     <span className="text-sm font-medium">{user.name}</span>
                     <span className="text-xs text-muted-foreground">{user.email}</span>
                   </div>
@@ -144,7 +159,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 container mx-auto p-4">
+      <main className="flex-1 container mx-auto p-2 sm:p-4">
         <div className="animate-fade-in">{children}</div>
       </main>
     </div>
