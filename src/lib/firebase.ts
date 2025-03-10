@@ -3,12 +3,14 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY", // Replace with your Firebase API key
-  authDomain: "YOUR_AUTH_DOMAIN", // Replace with your Firebase auth domain
-  projectId: "YOUR_PROJECT_ID", // Replace with your Firebase project ID
-  storageBucket: "YOUR_STORAGE_BUCKET", // Replace with your Firebase storage bucket
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // Replace with your Firebase messaging sender ID
-  appId: "YOUR_APP_ID" // Replace with your Firebase app ID
+  apiKey: "AIzaSyAVpaDUcLkRZlY9ge7BkjmT3qBikuPGeUo",
+  authDomain: "app1-e1cea.firebaseapp.com",
+  databaseURL: "https://app1-e1cea-default-rtdb.firebaseio.com",
+  projectId: "app1-e1cea",
+  storageBucket: "app1-e1cea.firebasestorage.app",
+  messagingSenderId: "261005434130",
+  appId: "1:261005434130:web:6adc11a4ad32736aff67cb",
+  measurementId: "G-6GBVN210TX"
 };
 
 // Initialize Firebase
