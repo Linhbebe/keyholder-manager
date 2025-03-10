@@ -69,9 +69,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await signInWithEmailAndPassword(auth, email, password);
       toast.success('Đăng nhập thành công');
       navigate('/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
-      toast.error('Email hoặc mật khẩu không đúng');
+      let errorMessage = 'Email hoặc mật khẩu không đúng';
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'Người dùng không tồn tại';
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Mật khẩu không đúng';
+      }
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -80,13 +86,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (name: string, email: string, password: string) => {
     try {
       setIsLoading(true);
+      console.log('Attempting to register with:', { name, email, password: '***' });
+      
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      console.log('User created successfully:', userCredential.user.uid);
       
       // Update the user profile with the name
       if (userCredential.user) {
         await updateProfile(userCredential.user, {
           displayName: name
         });
+        console.log('Profile updated with name:', name);
         
         // Update the local user state with the updated profile
         const updatedUser = formatUser({
@@ -100,9 +110,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       toast.success('Đăng ký thành công');
       navigate('/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
-      toast.error('Đăng ký thất bại. Vui lòng thử lại.');
+      let errorMessage = 'Đăng ký thất bại. Vui lòng thử lại.';
+      
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'Email đã được sử dụng';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Email không hợp lệ';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'Mật khẩu quá yếu';
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }

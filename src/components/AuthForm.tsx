@@ -67,8 +67,10 @@ const AuthForm: React.FC = () => {
     }
     
     if (isRegistering) {
+      console.log('Submitting registration form with:', { name, email, password: '***' });
       register(name, email, password);
     } else {
+      console.log('Submitting login form with:', { email, password: '***' });
       login(email, password);
     }
   };
