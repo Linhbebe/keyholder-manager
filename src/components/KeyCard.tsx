@@ -14,6 +14,7 @@ export interface KeyCardProps {
   isActive: boolean;
   lastUsed?: string;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 const KeyCard: React.FC<KeyCardProps> = ({

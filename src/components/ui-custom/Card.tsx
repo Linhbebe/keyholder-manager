@@ -8,6 +8,7 @@ interface CardProps {
   className?: string;
   animate?: boolean;
   hover?: boolean;
+  style?: React.CSSProperties;
 }
 
 const Card: React.FC<CardProps> = ({
