@@ -11,6 +11,7 @@ import {
   User as FirebaseUser 
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import { sendESP32Notification, storeLoginActivity } from '@/utils/esp32Utils';
 
 interface User {
   id: string;
@@ -66,7 +67,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userData = formatUser(userCredential.user);
+      
+      // Send notification to ESP32
+      await sendESP32Notification({
+        userId: userData.id,
+        userName: userData.name,
+        action: 'login',
+        message: `${userData.name} đã đăng nhập vào hệ thống`
+      });
+      
+      // Store login activity
+      await storeLoginActivity(userData.id, userData.name, 'login');
+      
       toast.success('Đăng nhập thành công');
       navigate('/dashboard');
     } catch (error: any) {
