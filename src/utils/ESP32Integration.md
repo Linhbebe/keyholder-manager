@@ -1,7 +1,7 @@
 
 # ESP32 Integration Guide
 
-This guide explains how to connect your ESP32 with LCD display to this KeyHolder Manager app.
+This guide explains how to connect your ESP32 with LCD display to this SmartKey Manager app.
 
 ## Requirements
 
@@ -26,9 +26,9 @@ This guide explains how to connect your ESP32 with LCD display to this KeyHolder
 #define WIFI_SSID "YOUR_WIFI_SSID"
 #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
-// Firebase project settings
-#define API_KEY "AIzaSyAVpaDUcLkRZlY9ge7BkjmT3qBikuPGeUo"
-#define DATABASE_URL "https://app1-e1cea-default-rtdb.firebaseio.com"
+// Firebase project settings - UPDATE THESE WITH YOUR VALUES
+#define DATABASE_URL "https://app1-e1cea-default-rtdb.firebaseio.com/"
+#define DATABASE_SECRET "D1U4X8Fo6UwhYPkU7IbHxWNCmvQOj7yX9uKczRs0"
 
 // LCD Configuration
 #define LCD_ADDR 0x27  // I2C address of LCD (typically 0x27 or 0x3F)
@@ -75,14 +75,14 @@ void setup() {
   delay(2000);
 
   // Configure Firebase
-  config.api_key = API_KEY;
-  config.database_url = DATABASE_URL; 
+  config.database_url = DATABASE_URL;
+  config.signer.tokens.legacy_token = DATABASE_SECRET;
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("KeyHolder System");
+  lcd.print("SmartKey System");
   lcd.setCursor(0, 1);
   lcd.print("Ready");
 }
@@ -96,36 +96,40 @@ void loop() {
     // Check for new notifications in Firebase
     if (Firebase.getJSON(fbdo, "/esp32_notifications")) {
       FirebaseJson &json = fbdo.jsonObject();
-      FirebaseJsonData result;
-      
       size_t len = json.iteratorBegin();
-      String path;
+      String path, value;
+      int type;
       
       // Iterate through each notification
       for (size_t i = 0; i < len; i++) {
         json.iteratorGet(i, type, path, value);
         
-        if (type == "object") {
+        if (type == FIREBASE_JSON_OBJECT) {
           // Get notification details
           String notificationPath = path;
           
           // Check if this notification has been delivered
-          Firebase.getBool(fbdo, "/esp32_notifications/" + notificationPath + "/delivered", result);
-          bool delivered = result.boolValue;
-          
-          if (!delivered) {
-            // Get message content
-            Firebase.getString(fbdo, "/esp32_notifications/" + notificationPath + "/message", result);
-            String message = result.stringValue;
+          FirebaseJson innerJson;
+          String deliveredPath = "/esp32_notifications/" + notificationPath + "/delivered";
+          if (Firebase.getBool(fbdo, deliveredPath)) {
+            bool delivered = fbdo.boolData();
             
-            // Display on LCD
-            displayNotification(message);
-            
-            // Mark as delivered
-            Firebase.setBool(fbdo, "/esp32_notifications/" + notificationPath + "/delivered", true);
-            
-            // We'll process one notification at a time
-            break;
+            if (!delivered) {
+              // Get message content
+              String messagePath = "/esp32_notifications/" + notificationPath + "/message";
+              if (Firebase.getString(fbdo, messagePath)) {
+                String message = fbdo.stringData();
+                
+                // Display on LCD
+                displayNotification(message);
+                
+                // Mark as delivered
+                Firebase.setBool(fbdo, deliveredPath, true);
+                
+                // We'll process one notification at a time
+                break;
+              }
+            }
           }
         }
       }
@@ -161,7 +165,7 @@ void displayNotification(String message) {
   // Return to default screen
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("KeyHolder System");
+  lcd.print("SmartKey System");
   lcd.setCursor(0, 1);
   lcd.print("Ready");
 }
@@ -170,13 +174,15 @@ void displayNotification(String message) {
 ## Usage Instructions
 
 1. Replace `YOUR_WIFI_SSID` and `YOUR_WIFI_PASSWORD` with your WiFi credentials
-2. If needed, adjust the LCD address and dimensions according to your LCD model
-3. Upload the code to your ESP32
-4. The ESP32 will connect to WiFi and Firebase, then listen for login notifications
-5. When someone logs in to the KeyHolder Manager app, the notification will appear on the LCD
+2. The Firebase database URL and auth token are already set up for you
+3. If needed, adjust the LCD address and dimensions according to your LCD model
+4. Upload the code to your ESP32
+5. The ESP32 will connect to WiFi and Firebase, then listen for login notifications
+6. When someone logs in to the SmartKey app, the notification will appear on the LCD
 
 ## Troubleshooting
 
 - If you're having connection issues, verify your WiFi credentials and that your ESP32 is within range of your router
 - Ensure Firebase rules allow read/write access to the `esp32_notifications` path
 - Check serial monitor (115200 baud) for debugging information
+- If authentication fails, verify that the Database Secret is correct and that the database rules allow access with this token
