@@ -13,12 +13,15 @@ import {
 import { auth } from '@/lib/firebase';
 import { sendESP32Notification, storeLoginActivity } from '@/utils/esp32Utils';
 
+// Owner email constant
+const OWNER_EMAIL = 'a@gmail.com';
+
 interface User {
   id: string;
   name: string;
   email: string;
   avatar?: string;
-  role?: 'admin' | 'user';
+  role?: 'owner' | 'admin' | 'user';
 }
 
 interface AuthContextType {
@@ -26,6 +29,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isAdmin: boolean;
+  isOwner: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -40,6 +44,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const navigate = useNavigate();
 
   const formatUser = (firebaseUser: FirebaseUser): User => {
+    // Check if this is the owner account
+    if (firebaseUser.email === OWNER_EMAIL) {
+      return {
+        id: firebaseUser.uid,
+        name: firebaseUser.displayName || 'Chủ sở hữu',
+        email: firebaseUser.email,
+        avatar: firebaseUser.photoURL || undefined,
+        role: 'owner'
+      };
+    }
+    
     // For demonstration, users with specific emails can be assigned admin role
     // In a real system, this would come from a database
     const isAdmin = firebaseUser.email?.includes('admin') || false;
@@ -90,7 +105,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: `Chào mừng trở lại, ${userData.name}!`,
       });
       
-      navigate('/dashboard');
+      // Redirect owner to admin dashboard, others to regular dashboard
+      if (userData.email === OWNER_EMAIL) {
+        navigate('/admin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error: any) {
       console.error('Login error:', error);
       let errorMessage = 'Email hoặc mật khẩu không đúng';
@@ -220,7 +240,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         isAuthenticated: !!user,
         isLoading,
-        isAdmin: user?.role === 'admin',
+        isAdmin: user?.role === 'admin' || user?.role === 'owner',
+        isOwner: user?.role === 'owner',
         login,
         register,
         logout,

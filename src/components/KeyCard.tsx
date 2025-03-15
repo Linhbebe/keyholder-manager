@@ -2,9 +2,10 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui-custom/Card';
 import { Badge } from '@/components/ui/badge';
-import { Key, DoorOpen, CheckCircle, XCircle, Home, Building, Clock, Shield, AlertTriangle } from 'lucide-react';
+import { Key, DoorOpen, CheckCircle, XCircle, Home, Building, Clock, Shield, AlertTriangle, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext';
 
 export interface KeyCardProps {
   id: string;
@@ -27,6 +28,8 @@ const KeyCard: React.FC<KeyCardProps> = ({
   className,
   style
 }) => {
+  const { isOwner } = useAuth();
+  
   const getTypeIcon = () => {
     switch (type) {
       case 'home':
@@ -53,7 +56,7 @@ const KeyCard: React.FC<KeyCardProps> = ({
           isActive ? "bg-green-500" : "bg-red-500"
         )} />
         
-        <div className="absolute top-3 right-3">
+        <div className="absolute top-3 right-3 flex flex-col gap-2">
           {isActive ? (
             <Badge variant="default" className="bg-green-500/10 text-green-600 hover:bg-green-500/20 gap-1">
               <Shield className="h-3 w-3" />
@@ -63,6 +66,13 @@ const KeyCard: React.FC<KeyCardProps> = ({
             <Badge variant="destructive" className="gap-1">
               <AlertTriangle className="h-3 w-3" />
               <span className="text-xs">Vô hiệu</span>
+            </Badge>
+          )}
+          
+          {isOwner && (
+            <Badge variant="outline" className="bg-primary/10 gap-1 border-primary/30">
+              <Lock className="h-3 w-3" />
+              <span className="text-xs">Quản lý</span>
             </Badge>
           )}
         </div>
