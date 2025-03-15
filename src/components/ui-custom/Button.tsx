@@ -12,10 +12,11 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   iconPosition?: 'left' | 'right';
   loading?: boolean;
   className?: string;
+  asChild?: boolean; // Added asChild prop to match shadcn/ui Button
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ children, variant = 'default', size = 'default', icon: Icon, iconPosition = 'left', loading, className, ...props }, ref) => {
+  ({ children, variant = 'default', size = 'default', icon: Icon, iconPosition = 'left', loading, className, asChild, ...props }, ref) => {
     return (
       <ShadcnButton
         ref={ref}
@@ -28,6 +29,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           className
         )}
         disabled={props.disabled || loading}
+        asChild={asChild} // Pass asChild prop to ShadcnButton
         {...props}
       >
         {loading ? (
