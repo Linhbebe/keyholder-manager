@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -17,12 +18,14 @@ interface User {
   name: string;
   email: string;
   avatar?: string;
+  role?: 'admin' | 'user';
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -37,11 +40,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const navigate = useNavigate();
 
   const formatUser = (firebaseUser: FirebaseUser): User => {
+    // For demonstration, users with specific emails can be assigned admin role
+    // In a real system, this would come from a database
+    const isAdmin = firebaseUser.email?.includes('admin') || false;
+    
     return {
       id: firebaseUser.uid,
       name: firebaseUser.displayName || 'User',
       email: firebaseUser.email || '',
       avatar: firebaseUser.photoURL || undefined,
+      role: isAdmin ? 'admin' : 'user'
     };
   };
 
@@ -67,6 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const userData = formatUser(userCredential.user);
       
+      // Send notification to ESP32 with username and login time
       await sendESP32Notification({
         userId: userData.id,
         userName: userData.name,
@@ -74,9 +83,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         message: `${userData.name} đã đăng nhập`
       });
       
+      // Store login activity for real-time history
       await storeLoginActivity(userData.id, userData.name, 'login');
       
-      toast.success('Đăng nhập thành công');
+      toast.success('Đăng nhập thành công', {
+        description: `Chào mừng trở lại, ${userData.name}!`,
+      });
+      
       navigate('/dashboard');
     } catch (error: any) {
       console.error('Login error:', error);
@@ -86,7 +99,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (error.code === 'auth/wrong-password') {
         errorMessage = 'Mật khẩu không đúng';
       }
-      toast.error(errorMessage);
+      toast.error('Đăng nhập thất bại', {
+        description: errorMessage,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -106,12 +121,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         console.log('Profile updated with name:', name);
         
+        // Notify ESP32 about new user registration
+        await sendESP32Notification({
+          userId: userCredential.user.uid,
+          userName: name,
+          action: 'register',
+          message: `${name} đã đăng ký tài khoản mới`
+        });
+        
         await signOut(auth);
         setUser(null);
         localStorage.removeItem('user');
       }
       
-      toast.success('Đăng ký thành công! Vui lòng đăng nhập.');
+      toast.success('Đăng ký thành công!', {
+        description: 'Vui lòng đăng nhập với tài khoản mới của bạn.',
+      });
       navigate('/');
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -125,7 +150,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         errorMessage = 'Mật khẩu quá yếu';
       }
       
-      toast.error(errorMessage);
+      toast.error('Đăng ký thất bại', {
+        description: errorMessage,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -133,10 +160,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      if (user) {
+        // Log the logout activity before actually logging out
+        await storeLoginActivity(user.id, user.name, 'logout');
+        
+        // Notify ESP32 about logout
+        await sendESP32Notification({
+          userId: user.id,
+          userName: user.name,
+          action: 'logout',
+          message: `${user.name} đã đăng xuất`
+        });
+      }
+      
       await signOut(auth);
       setUser(null);
       localStorage.removeItem('user');
-      toast.info('Đã đăng xuất');
+      toast.info('Đã đăng xuất thành công');
       navigate('/');
     } catch (error) {
       console.error('Logout error:', error);
@@ -162,6 +202,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const updatedUser = { ...user, ...userData };
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
+        
+        // Log this activity
+        await storeLoginActivity(user.id, updatedUser.name, 'update_profile');
+        
         toast.success('Cập nhật thông tin thành công');
       }
     } catch (error) {
@@ -176,6 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         isAuthenticated: !!user,
         isLoading,
+        isAdmin: user?.role === 'admin',
         login,
         register,
         logout,
