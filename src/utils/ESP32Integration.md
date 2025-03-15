@@ -115,13 +115,13 @@ void loop() {
             bool delivered = fbdo.boolData();
             
             if (!delivered) {
-              // Get message content
+              // Get message content - this will contain username and login time
               String messagePath = "/esp32_notifications/" + notificationPath + "/message";
               if (Firebase.getString(fbdo, messagePath)) {
                 String message = fbdo.stringData();
                 
                 // Display on LCD
-                displayNotification(message);
+                displayLoginNotification(message);
                 
                 // Mark as delivered
                 Firebase.setBool(fbdo, deliveredPath, true);
@@ -139,28 +139,16 @@ void loop() {
   }
 }
 
-void displayNotification(String message) {
-  Serial.println("New notification: " + message);
+void displayLoginNotification(String message) {
+  Serial.println("New login: " + message);
   
   lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("User Login:");
+  lcd.setCursor(0, 1);
+  lcd.print(message);  // Already formatted as "username - time"
   
-  // If message is longer than LCD width, scroll it
-  if (message.length() > LCD_COLS) {
-    for (int pos = 0; pos <= message.length() - LCD_COLS; pos++) {
-      lcd.setCursor(0, 0);
-      lcd.print("Notification:");
-      lcd.setCursor(0, 1);
-      lcd.print(message.substring(pos, pos + LCD_COLS));
-      delay(300);
-    }
-  } else {
-    lcd.setCursor(0, 0);
-    lcd.print("Notification:");
-    lcd.setCursor(0, 1);
-    lcd.print(message);
-  }
-  
-  delay(3000);  // Display for 3 seconds
+  delay(5000);  // Display for 5 seconds
   
   // Return to default screen
   lcd.clear();
@@ -178,11 +166,27 @@ void displayNotification(String message) {
 3. If needed, adjust the LCD address and dimensions according to your LCD model
 4. Upload the code to your ESP32
 5. The ESP32 will connect to WiFi and Firebase, then listen for login notifications
-6. When someone logs in to the SmartKey app, the notification will appear on the LCD
+6. When someone logs in to the SmartKey app, the username and login time will be displayed on the LCD
+7. Login history is stored in real-time in the Firebase database, accessible via the master account
+
+## Realtime Database Structure
+
+The Firebase database stores login information with the following structure:
+
+- `/esp32_notifications/{notificationId}` - Notification messages for the ESP32
+- `/user_activities/{userId}/{activityId}` - Detailed login history for each user
+- `/recent_activities/{userId}/{activityId}` - Most recent login activities (limited entries)
+
+Each activity entry contains:
+- `userName` - The name of the user who logged in
+- `action` - Type of activity (e.g., "login")
+- `timestamp` - Server timestamp
+- `formattedTime` - Human-readable time in local format
+- `deviceInfo` - Information about the device used for login
 
 ## Troubleshooting
 
 - If you're having connection issues, verify your WiFi credentials and that your ESP32 is within range of your router
-- Ensure Firebase rules allow read/write access to the `esp32_notifications` path
+- Ensure Firebase rules allow read/write access to the required paths (`esp32_notifications`, `user_activities`, `recent_activities`)
 - Check serial monitor (115200 baud) for debugging information
 - If authentication fails, verify that the Database Secret is correct and that the database rules allow access with this token

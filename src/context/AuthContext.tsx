@@ -36,7 +36,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const navigate = useNavigate();
 
-  // Convert Firebase user to our User type
   const formatUser = (firebaseUser: FirebaseUser): User => {
     return {
       id: firebaseUser.uid,
@@ -46,7 +45,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   };
 
-  // Listen to authentication state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
@@ -69,15 +67,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const userData = formatUser(userCredential.user);
       
-      // Send notification to ESP32
       await sendESP32Notification({
         userId: userData.id,
         userName: userData.name,
         action: 'login',
-        message: `${userData.name} đã đăng nhập vào hệ thống`
+        message: `${userData.name} đã đăng nhập`
       });
       
-      // Store login activity
       await storeLoginActivity(userData.id, userData.name, 'login');
       
       toast.success('Đăng nhập thành công');
@@ -104,21 +100,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log('User created successfully:', userCredential.user.uid);
       
-      // Update the user profile with the name
       if (userCredential.user) {
         await updateProfile(userCredential.user, {
           displayName: name
         });
         console.log('Profile updated with name:', name);
         
-        // Sign out the user after registration is complete
         await signOut(auth);
         setUser(null);
         localStorage.removeItem('user');
       }
       
       toast.success('Đăng ký thành công! Vui lòng đăng nhập.');
-      navigate('/'); // Redirect to the login page
+      navigate('/');
     } catch (error: any) {
       console.error('Registration error:', error);
       let errorMessage = 'Đăng ký thất bại. Vui lòng thử lại.';
@@ -153,21 +147,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = async (userData: Partial<User>) => {
     try {
       if (auth.currentUser && user) {
-        // Only update displayName in Firebase if it's included in userData
         if (userData.name) {
           await updateProfile(auth.currentUser, {
             displayName: userData.name
           });
         }
         
-        // If avatar URL is provided, update photoURL
         if (userData.avatar) {
           await updateProfile(auth.currentUser, {
             photoURL: userData.avatar
           });
         }
         
-        // Update local user state
         const updatedUser = { ...user, ...userData };
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
