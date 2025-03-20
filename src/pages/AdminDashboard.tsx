@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui-custom/Card';
@@ -55,7 +54,6 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    // Real-time listener for all user activities
     const recentActivitiesRef = query(
       ref(database, 'recent_activities'),
       orderByChild('timestamp'),
@@ -81,7 +79,6 @@ const AdminDashboard: React.FC = () => {
         });
       });
       
-      // Sort by timestamp (newest first)
       activities.sort((a, b) => {
         const dateA = new Date(a.formattedTime.split(', ')[0].split('/').reverse().join('-') + 'T' + a.formattedTime.split(', ')[1]);
         const dateB = new Date(b.formattedTime.split(', ')[0].split('/').reverse().join('-') + 'T' + b.formattedTime.split(', ')[1]);
@@ -91,11 +88,9 @@ const AdminDashboard: React.FC = () => {
       setAccessLogs(activities);
     });
     
-    // Mock user data for demo purposes
-    // In a real application, we would fetch this from Firebase Authentication or Firestore
     const mockUsers: UserData[] = [
       { id: '1', name: 'Chủ sở hữu', email: 'a@gmail.com', role: 'owner', accessGranted: true },
-        id:'2', name: 'P1', email: 'abc@gmail.com', role: 'ower', accessGranted: true },
+      { id: '2', name: 'P1', email: 'abc@gmail.com', role: 'owner', accessGranted: true }
     ];
     
     setUsers(mockUsers);
@@ -109,16 +104,13 @@ const AdminDashboard: React.FC = () => {
   const handleToggleAccess = async (userId: string, userName: string, roomId: string, roomName: string, currentStatus: boolean) => {
     try {
       if (currentStatus) {
-        // Revoke access
         await revokeRoomAccess(userId, userName, roomId, roomName);
         toast.success(`Đã thu hồi quyền truy cập của ${userName} vào ${roomName}`);
       } else {
-        // Grant access
         await grantRoomAccess(userId, userName, roomId, roomName);
         toast.success(`Đã cấp quyền truy cập cho ${userName} vào ${roomName}`);
       }
       
-      // Update local state
       setUsers(users.map(u => {
         if (u.id === userId) {
           return { ...u, accessGranted: !currentStatus };
