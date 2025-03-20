@@ -95,10 +95,7 @@ const AdminDashboard: React.FC = () => {
     // In a real application, we would fetch this from Firebase Authentication or Firestore
     const mockUsers: UserData[] = [
       { id: '1', name: 'Chủ sở hữu', email: 'a@gmail.com', role: 'owner', accessGranted: true },
-      { id: '2', name: 'Nguyễn Văn A', email: 'nguyenvana@example.com', role: 'user', lastLogin: '1 giờ trước', accessGranted: true },
-      { id: '3', name: 'Trần Thị B', email: 'tranthib@example.com', role: 'user', lastLogin: '1 ngày trước', accessGranted: false },
-      { id: '4', name: 'Lê Văn C', email: 'levanc@example.com', role: 'admin', lastLogin: '3 giờ trước', accessGranted: true },
-      { id: '5', name: 'Phạm Thị D', email: 'phamthid@example.com', role: 'user', lastLogin: '2 ngày trước', accessGranted: false },
+        id:'2', name: 'P1', email: 'abc@gmail.com', role: 'ower', accessGranted: true },
     ];
     
     setUsers(mockUsers);
