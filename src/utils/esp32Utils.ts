@@ -1,3 +1,4 @@
+
 import { ref, set, serverTimestamp, onValue, query, orderByChild, limitToLast, remove } from 'firebase/database';
 import { database } from '@/lib/firebase';
 
@@ -7,6 +8,18 @@ interface NotificationData {
   action: string;
   timestamp: any;
   message: string;
+}
+
+interface DoorAccessEvent {
+  doorId: string;
+  doorName: string;
+  userId: string;
+  userName: string;
+  action: 'unlock' | 'lock';
+  timestamp: any;
+  method: 'password' | 'card' | 'remote' | 'manual';
+  passwordUsed?: string;
+  success: boolean;
 }
 
 // Send notification to ESP32 through Firebase
@@ -45,6 +58,125 @@ export const sendESP32Notification = async (data: Omit<NotificationData, 'timest
     console.error('Error sending notification to ESP32:', error);
     return false;
   }
+};
+
+// Record door access event (lock/unlock)
+export const recordDoorAccessEvent = async (data: Omit<DoorAccessEvent, 'timestamp'>) => {
+  try {
+    const eventId = `door_event_${Date.now()}`;
+    
+    // Get current date and time in Vietnamese format
+    const currentDateTime = new Date().toLocaleString('vi-VN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    
+    // Store door access event
+    await set(ref(database, `door_access_events/${data.doorId}/${eventId}`), {
+      ...data,
+      timestamp: serverTimestamp(),
+      formattedTime: currentDateTime
+    });
+    
+    // Also store in recent activities for the user
+    await storeLoginActivity(
+      data.userId, 
+      data.userName, 
+      `${data.action === 'unlock' ? 'Mở khóa' : 'Khóa'} ${data.doorName} bằng ${
+        data.method === 'password' ? 'mật khẩu' : 
+        data.method === 'card' ? 'thẻ' : 
+        data.method === 'remote' ? 'điều khiển từ xa' : 'thủ công'
+      }`
+    );
+    
+    // Notify ESP32 about door access
+    await sendESP32Notification({
+      userId: data.userId,
+      userName: data.userName,
+      action: data.action,
+      message: `${data.userName} đã ${data.action === 'unlock' ? 'mở khóa' : 'khóa'} ${data.doorName}`
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error recording door access event:', error);
+    return false;
+  }
+};
+
+// Process password authentication from ESP32
+export const processPasswordAuth = async (doorId: string, doorName: string, password: string, userId?: string, userName?: string) => {
+  try {
+    // In a real application, you would verify the password against stored passwords
+    // For demo purposes, we'll use some hardcoded passwords
+    const validPasswords = {
+      '123456': { userId: '1', userName: 'Chủ sở hữu' },
+      '654321': { userId: '2', userName: 'P1' }
+    };
+    
+    const isValid = Object.keys(validPasswords).includes(password);
+    const user = validPasswords[password as keyof typeof validPasswords] || { 
+      userId: userId || 'unknown', 
+      userName: userName || 'Người dùng không xác định' 
+    };
+    
+    // Record the door access event
+    await recordDoorAccessEvent({
+      doorId,
+      doorName,
+      userId: user.userId,
+      userName: user.userName,
+      action: 'unlock',
+      method: 'password',
+      passwordUsed: password,
+      success: isValid
+    });
+    
+    return {
+      success: isValid,
+      userId: user.userId,
+      userName: user.userName,
+      message: isValid 
+        ? `${user.userName} đã mở khóa ${doorName} thành công` 
+        : `Mật khẩu không hợp lệ cho ${doorName}`
+    };
+  } catch (error) {
+    console.error('Error processing password authentication:', error);
+    return {
+      success: false,
+      userId: userId || 'unknown',
+      userName: userName || 'Người dùng không xác định',
+      message: `Lỗi xác thực cho ${doorName}`
+    };
+  }
+};
+
+// Get recent door access events
+export const getRecentDoorEvents = (doorId: string, limit = 20, callback: (events: any[]) => void) => {
+  const doorEventsRef = query(
+    ref(database, `door_access_events/${doorId}`),
+    orderByChild('timestamp'),
+    limitToLast(limit)
+  );
+  
+  return onValue(doorEventsRef, (snapshot) => {
+    const events: any[] = [];
+    snapshot.forEach((childSnapshot) => {
+      events.push({
+        id: childSnapshot.key,
+        ...childSnapshot.val()
+      });
+    });
+    
+    // Sort by timestamp in descending order (newest first)
+    events.sort((a, b) => b.timestamp - a.timestamp);
+    callback(events);
+  });
 };
 
 // Store login activity in real-time
