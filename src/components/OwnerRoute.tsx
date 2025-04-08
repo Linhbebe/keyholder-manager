@@ -5,10 +5,11 @@ import { useAuth } from '@/context/AuthContext';
 
 interface OwnerRouteProps {
   children: React.ReactNode;
+  requiredPermission?: 'manageUsers' | 'manageAccess' | 'viewLogs' | 'manageDoors';
 }
 
-const OwnerRoute: React.FC<OwnerRouteProps> = ({ children }) => {
-  const { isAuthenticated, isOwner, isLoading } = useAuth();
+const OwnerRoute: React.FC<OwnerRouteProps> = ({ children, requiredPermission }) => {
+  const { isAuthenticated, isOwner, user, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -18,11 +19,18 @@ const OwnerRoute: React.FC<OwnerRouteProps> = ({ children }) => {
     );
   }
 
-  if (!isAuthenticated || !isOwner) {
-    return <Navigate to="/dashboard" replace />;
+  // Owner always has access
+  if (isAuthenticated && isOwner) {
+    return <>{children}</>;
+  }
+  
+  // Check for specific permission if not owner
+  if (isAuthenticated && requiredPermission && user?.permissions?.[requiredPermission]) {
+    return <>{children}</>;
   }
 
-  return <>{children}</>;
+  // Default redirect if not authenticated or doesn't have permission
+  return <Navigate to="/dashboard" replace />;
 };
 
 export default OwnerRoute;

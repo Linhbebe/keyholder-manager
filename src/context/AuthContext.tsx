@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -10,8 +9,9 @@ import {
   updateProfile, 
   User as FirebaseUser 
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { auth, database } from '@/lib/firebase';
 import { sendESP32Notification, storeLoginActivity } from '@/utils/esp32Utils';
+import { ref, get, set, onValue } from 'firebase/database';
 
 // Owner email constant
 const OWNER_EMAIL = 'a@gmail.com';
@@ -21,7 +21,10 @@ interface User {
   name: string;
   email: string;
   avatar?: string;
-  role?: 'owner' | 'admin' | 'user';
+  role: 'owner' | 'admin' | 'user';
+  permissions?: {
+    [key: string]: boolean;
+  };
 }
 
 interface AuthContextType {
@@ -34,6 +37,7 @@ interface AuthContextType {
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
+  updateUserPermissions: (userId: string, permissions: Record<string, boolean>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,35 +47,100 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const navigate = useNavigate();
 
-  const formatUser = (firebaseUser: FirebaseUser): User => {
-    // Check if this is the owner account
-    if (firebaseUser.email === OWNER_EMAIL) {
+  // Check if a user exists in the database
+  const getUserRoleAndPermissions = async (userId: string, email: string, displayName: string) => {
+    try {
+      const userRef = ref(database, `users/${userId}`);
+      const snapshot = await get(userRef);
+      
+      // If owner by email
+      if (email === OWNER_EMAIL) {
+        if (!snapshot.exists()) {
+          // Create owner record if doesn't exist
+          await set(userRef, {
+            id: userId,
+            name: displayName || 'Chủ sở hữu',
+            email: email,
+            role: 'owner',
+            permissions: {
+              manageUsers: true,
+              manageAccess: true,
+              viewLogs: true,
+              manageDoors: true
+            },
+            createdAt: new Date().toISOString()
+          });
+        }
+        
+        return {
+          role: 'owner',
+          permissions: {
+            manageUsers: true,
+            manageAccess: true,
+            viewLogs: true,
+            manageDoors: true
+          }
+        };
+      }
+      
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        return {
+          role: userData.role || 'user',
+          permissions: userData.permissions || {}
+        };
+      } else {
+        // Create new user with basic permissions
+        const newUserData = {
+          id: userId,
+          name: displayName || 'Người dùng',
+          email: email,
+          role: 'user',
+          permissions: {
+            manageUsers: false,
+            manageAccess: false,
+            viewLogs: true,
+            manageDoors: false
+          },
+          createdAt: new Date().toISOString()
+        };
+        
+        await set(userRef, newUserData);
+        return {
+          role: 'user',
+          permissions: newUserData.permissions
+        };
+      }
+    } catch (error) {
+      console.error('Error getting user role:', error);
       return {
-        id: firebaseUser.uid,
-        name: firebaseUser.displayName || 'Chủ sở hữu',
-        email: firebaseUser.email,
-        avatar: firebaseUser.photoURL || undefined,
-        role: 'owner'
+        role: 'user',
+        permissions: {}
       };
     }
-    
-    // For demonstration, users with specific emails can be assigned admin role
-    // In a real system, this would come from a database
-    const isAdmin = firebaseUser.email?.includes('admin') || false;
+  };
+
+  const formatUser = async (firebaseUser: FirebaseUser): Promise<User> => {
+    const { role, permissions } = await getUserRoleAndPermissions(
+      firebaseUser.uid,
+      firebaseUser.email || '',
+      firebaseUser.displayName || ''
+    );
     
     return {
       id: firebaseUser.uid,
-      name: firebaseUser.displayName || 'User',
+      name: firebaseUser.displayName || 'Người dùng',
       email: firebaseUser.email || '',
       avatar: firebaseUser.photoURL || undefined,
-      role: isAdmin ? 'admin' : 'user'
+      role,
+      permissions
     };
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const formattedUser = formatUser(firebaseUser);
+        const formattedUser = await formatUser(firebaseUser);
         setUser(formattedUser);
         localStorage.setItem('user', JSON.stringify(formattedUser));
       } else {
@@ -88,7 +157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const userData = formatUser(userCredential.user);
+      const userData = await formatUser(userCredential.user);
       
       // Send notification to ESP32 with username and login time
       await sendESP32Notification({
@@ -105,8 +174,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: `Chào mừng trở lại, ${userData.name}!`,
       });
       
-      // Redirect owner to admin dashboard, others to regular dashboard
-      if (userData.email === OWNER_EMAIL) {
+      // Redirect owner/admin to admin dashboard, others to regular dashboard
+      if (userData.role === 'owner' || userData.role === 'admin') {
         navigate('/admin');
       } else {
         navigate('/dashboard');
@@ -140,6 +209,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           displayName: name
         });
         console.log('Profile updated with name:', name);
+        
+        // Save user to database with default role and permissions
+        const userRef = ref(database, `users/${userCredential.user.uid}`);
+        await set(userRef, {
+          id: userCredential.user.uid,
+          name: name,
+          email: email,
+          role: 'user',
+          permissions: {
+            manageUsers: false,
+            manageAccess: false,
+            viewLogs: true,
+            manageDoors: false
+          },
+          createdAt: new Date().toISOString()
+        });
         
         // Notify ESP32 about new user registration
         await sendESP32Notification({
@@ -234,6 +319,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUserPermissions = async (userId: string, permissions: Record<string, boolean>) => {
+    try {
+      const userRef = ref(database, `users/${userId}/permissions`);
+      await set(userRef, permissions);
+      
+      // If this is the current user, update their local state
+      if (user && user.id === userId) {
+        setUser(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            permissions: {
+              ...prev.permissions,
+              ...permissions
+            }
+          };
+        });
+      }
+      
+      toast.success('Cập nhật quyền thành công');
+      return true;
+    } catch (error) {
+      console.error('Error updating permissions:', error);
+      toast.error('Cập nhật quyền thất bại');
+      return false;
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -245,7 +358,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
-        updateUser
+        updateUser,
+        updateUserPermissions
       }}
     >
       {children}

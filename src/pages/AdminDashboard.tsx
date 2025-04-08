@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui-custom/Card';
@@ -7,14 +8,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { useToast } from '@/components/ui/use-toast';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import Button from '@/components/ui-custom/Button';
 import { 
   Shield, Users, Key, Clock, History, Bell, 
   UserPlus, UserCheck, UserX, DoorOpen, Lock,
-  ShieldAlert, Search, LayoutDashboard, LogOut, Home
+  ShieldAlert, Search, LogOut, Home
 } from 'lucide-react';
 import { database } from '@/lib/firebase';
 import { ref, onValue, get, set, remove, query, orderByChild, limitToLast } from 'firebase/database';
@@ -28,6 +28,12 @@ interface UserData {
   role: string;
   lastLogin?: string;
   accessGranted?: boolean;
+  permissions?: {
+    manageUsers: boolean;
+    manageAccess: boolean;
+    viewLogs: boolean;
+    manageDoors: boolean;
+  };
 }
 
 interface AccessLogEntry {
@@ -46,21 +52,55 @@ const ROOMS = [
   { id: 'room4', name: 'Phòng kỹ thuật' }
 ];
 
+const PERMISSIONS = [
+  { id: 'manageUsers', name: 'Quản lý người dùng', description: 'Thêm, sửa, xóa người dùng' },
+  { id: 'manageAccess', name: 'Phân quyền truy cập', description: 'Cấp, thu hồi quyền truy cập' },
+  { id: 'viewLogs', name: 'Xem lịch sử', description: 'Xem lịch sử hoạt động' },
+  { id: 'manageDoors', name: 'Quản lý cửa', description: 'Mở, khóa các cửa trong hệ thống' }
+];
+
 const AdminDashboard: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUserPermissions } = useAuth();
   const [users, setUsers] = useState<UserData[]>([]);
   const [accessLogs, setAccessLogs] = useState<AccessLogEntry[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   
   useEffect(() => {
+    // Fetch all users from database
+    const usersRef = ref(database, 'users');
+    const unsubscribeUsers = onValue(usersRef, (snapshot) => {
+      const usersList: UserData[] = [];
+      
+      snapshot.forEach((userSnapshot) => {
+        const userData = userSnapshot.val();
+        usersList.push({
+          id: userData.id,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role || 'user',
+          permissions: userData.permissions || {
+            manageUsers: false,
+            manageAccess: false,
+            viewLogs: true,
+            manageDoors: false
+          },
+          accessGranted: true // Default for display
+        });
+      });
+      
+      setUsers(usersList);
+      setLoading(false);
+    });
+    
+    // Real-time listener for activities
     const recentActivitiesRef = query(
       ref(database, 'recent_activities'),
       orderByChild('timestamp'),
       limitToLast(50)
     );
     
-    const unsubscribe = onValue(recentActivitiesRef, (snapshot) => {
+    const unsubscribeActivities = onValue(recentActivitiesRef, (snapshot) => {
       const activities: AccessLogEntry[] = [];
       
       snapshot.forEach((userSnapshot) => {
@@ -79,6 +119,7 @@ const AdminDashboard: React.FC = () => {
         });
       });
       
+      // Sort by timestamp (newest first)
       activities.sort((a, b) => {
         const dateA = new Date(a.formattedTime.split(', ')[0].split('/').reverse().join('-') + 'T' + a.formattedTime.split(', ')[1]);
         const dateB = new Date(b.formattedTime.split(', ')[0].split('/').reverse().join('-') + 'T' + b.formattedTime.split(', ')[1]);
@@ -88,16 +129,9 @@ const AdminDashboard: React.FC = () => {
       setAccessLogs(activities);
     });
     
-    const mockUsers: UserData[] = [
-      { id: '1', name: 'Chủ sở hữu', email: 'a@gmail.com', role: 'owner', accessGranted: true },
-      { id: '2', name: 'P1', email: 'abc@gmail.com', role: 'owner', accessGranted: true }
-    ];
-    
-    setUsers(mockUsers);
-    setLoading(false);
-    
     return () => {
-      unsubscribe();
+      unsubscribeUsers();
+      unsubscribeActivities();
     };
   }, []);
   
@@ -123,10 +157,75 @@ const AdminDashboard: React.FC = () => {
     }
   };
   
+  const handleTogglePermission = async (userId: string, permissionId: string, currentValue: boolean) => {
+    // Don't allow changing owner permissions
+    const targetUser = users.find(u => u.id === userId);
+    if (targetUser?.role === 'owner') {
+      toast.error('Không thể thay đổi quyền của chủ sở hữu');
+      return;
+    }
+    
+    try {
+      // Get current permissions
+      const userPermissions = { ...(targetUser?.permissions || {}) };
+      
+      // Update the specific permission
+      userPermissions[permissionId as keyof typeof userPermissions] = !currentValue;
+      
+      // Save to database
+      await updateUserPermissions(userId, userPermissions);
+      
+      // Update local state
+      setUsers(users.map(u => {
+        if (u.id === userId) {
+          return { 
+            ...u, 
+            permissions: {
+              ...u.permissions,
+              [permissionId]: !currentValue
+            }
+          };
+        }
+        return u;
+      }));
+      
+      toast.success(`Đã ${!currentValue ? 'cấp' : 'thu hồi'} quyền ${
+        PERMISSIONS.find(p => p.id === permissionId)?.name || permissionId
+      }`);
+      
+    } catch (error) {
+      console.error('Error toggling permission:', error);
+      toast.error('Không thể thay đổi quyền. Vui lòng thử lại.');
+    }
+  };
+  
   const filteredUsers = users.filter(user => 
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Don't render if user is not authenticated or not an admin/owner
+  if (!user || (user.role !== 'admin' && user.role !== 'owner')) {
+    return (
+      <Layout>
+        <div className="min-h-screen flex items-center justify-center">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="text-center">Bạn không có quyền truy cập</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center gap-4">
+              <p className="text-center text-muted-foreground">
+                Bạn cần có quyền quản trị để truy cập trang này.
+              </p>
+              <Button asChild>
+                <Link to="/dashboard">Quay lại trang chủ</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -139,7 +238,7 @@ const AdminDashboard: React.FC = () => {
                   <Shield className="h-8 w-8 text-primary" />
                 </div>
                 <div>
-                  <CardTitle className="text-2xl font-bold">Bảng điều khiển dành cho chủ sở hữu</CardTitle>
+                  <CardTitle className="text-2xl font-bold">Bảng điều khiển dành cho {user.role === 'owner' ? 'chủ sở hữu' : 'quản trị viên'}</CardTitle>
                   <p className="text-muted-foreground">Quản lý người dùng và phân quyền truy cập</p>
                 </div>
               </div>
@@ -186,15 +285,18 @@ const AdminDashboard: React.FC = () => {
         
         <Tabs defaultValue="users" className="w-full">
           <TabsList className="grid grid-cols-3 mb-8">
-            <TabsTrigger value="users" className="flex items-center gap-2">
+            <TabsTrigger value="users" className="flex items-center gap-2"
+              disabled={!user.permissions?.manageUsers && user.role !== 'owner'}>
               <Users className="h-4 w-4" />
               Quản lý người dùng
             </TabsTrigger>
-            <TabsTrigger value="access" className="flex items-center gap-2">
+            <TabsTrigger value="permissions" className="flex items-center gap-2" 
+              disabled={!user.permissions?.manageAccess && user.role !== 'owner'}>
               <Key className="h-4 w-4" />
-              Phân quyền truy cập
+              Phân quyền người dùng
             </TabsTrigger>
-            <TabsTrigger value="logs" className="flex items-center gap-2">
+            <TabsTrigger value="logs" className="flex items-center gap-2"
+              disabled={!user.permissions?.viewLogs && user.role !== 'owner'}>
               <History className="h-4 w-4" />
               Lịch sử hoạt động
             </TabsTrigger>
@@ -228,49 +330,49 @@ const AdminDashboard: React.FC = () => {
                   <tr className="bg-muted/50">
                     <th className="text-left p-3 font-medium">Tên</th>
                     <th className="text-left p-3 font-medium">Email</th>
-                    <th className="text-left p-3 font-medium">Quyền</th>
+                    <th className="text-left p-3 font-medium">Vai trò</th>
                     <th className="text-left p-3 font-medium">Trạng thái</th>
                     <th className="text-right p-3 font-medium">Hành động</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id} className="border-t">
+                  {filteredUsers.map((userData) => (
+                    <tr key={userData.id} className="border-t">
                       <td className="p-3">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9 border border-border">
                             <AvatarFallback className="bg-primary/10 text-primary">
-                              {user.name.charAt(0)}
+                              {userData.name.charAt(0)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="font-medium">{user.name}</span>
+                          <span className="font-medium">{userData.name}</span>
                         </div>
                       </td>
-                      <td className="p-3 text-muted-foreground">{user.email}</td>
+                      <td className="p-3 text-muted-foreground">{userData.email}</td>
                       <td className="p-3">
-                        {user.role === 'owner' ? (
+                        {userData.role === 'owner' ? (
                           <Badge className="bg-primary hover:bg-primary">Chủ sở hữu</Badge>
-                        ) : user.role === 'admin' ? (
-                          <Badge variant="outline" className="border-amber-500 text-amber-500 hover:bg-amber-50">Admin</Badge>
+                        ) : userData.role === 'admin' ? (
+                          <Badge variant="outline" className="border-amber-500 text-amber-500 hover:bg-amber-50">Quản trị viên</Badge>
                         ) : (
                           <Badge variant="outline">Người dùng</Badge>
                         )}
                       </td>
                       <td className="p-3">
                         <div className="flex items-center gap-2">
-                          <div className={`h-2 w-2 rounded-full ${user.lastLogin ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                          <div className={`h-2 w-2 rounded-full ${userData.lastLogin ? 'bg-green-500' : 'bg-gray-300'}`}></div>
                           <span className="text-sm text-muted-foreground">
-                            {user.lastLogin ? `Hoạt động ${user.lastLogin}` : 'Không hoạt động'}
+                            {userData.lastLogin ? `Hoạt động ${userData.lastLogin}` : 'Không hoạt động'}
                           </span>
                         </div>
                       </td>
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="sm" disabled={user.role === 'owner'}>
+                          <Button variant="ghost" size="sm" disabled={userData.role === 'owner' && user.role !== 'owner'}>
                             <UserCheck className="h-4 w-4 mr-1" />
                             Chỉnh sửa
                           </Button>
-                          <Button variant="ghost" size="sm" disabled={user.role === 'owner'}>
+                          <Button variant="ghost" size="sm" disabled={userData.role === 'owner'}>
                             <UserX className="h-4 w-4 mr-1" />
                             Vô hiệu
                           </Button>
@@ -283,47 +385,73 @@ const AdminDashboard: React.FC = () => {
             </Card>
           </TabsContent>
           
-          <TabsContent value="access" className="space-y-6">
+          <TabsContent value="permissions" className="space-y-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold flex items-center gap-2">
-                <DoorOpen className="h-5 w-5 text-primary" />
-                Phân quyền truy cập phòng
+                <Key className="h-5 w-5 text-primary" />
+                Phân quyền người dùng
               </h2>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Tìm kiếm người dùng..." 
+                  className="pl-9 w-64"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
             </div>
             
             <div className="grid grid-cols-1 gap-6">
-              {ROOMS.map((room) => (
-                <Card key={room.id} className="overflow-hidden">
+              {filteredUsers.map((userData) => (
+                <Card key={userData.id} className="overflow-hidden">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Lock className="h-5 w-5 text-primary" />
-                      {room.name}
-                    </CardTitle>
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="bg-primary/10 text-primary">
+                            {userData.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {userData.name}
+                        <Badge className={userData.role === 'owner' 
+                          ? 'bg-primary ml-2' 
+                          : userData.role === 'admin' 
+                          ? 'bg-amber-500 ml-2' 
+                          : 'bg-muted ml-2'}>
+                          {userData.role === 'owner' 
+                            ? 'Chủ sở hữu' 
+                            : userData.role === 'admin' 
+                            ? 'Quản trị viên' 
+                            : 'Người dùng'}
+                        </Badge>
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">{userData.email}</p>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {users.map((user) => (
-                        <div key={`${room.id}-${user.id}`} className="flex items-center justify-between py-2">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                                {user.name.charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium">{user.name}</p>
-                              <p className="text-xs text-muted-foreground">{user.email}</p>
-                            </div>
+                      {PERMISSIONS.map((permission) => (
+                        <div key={`${userData.id}-${permission.id}`} className="flex items-center justify-between py-2">
+                          <div>
+                            <p className="font-medium">{permission.name}</p>
+                            <p className="text-xs text-muted-foreground">{permission.description}</p>
                           </div>
                           
                           <div className="flex items-center gap-2">
                             <Switch 
-                              checked={user.accessGranted}
-                              disabled={user.role === 'owner'} // Owner always has access
-                              onCheckedChange={() => handleToggleAccess(user.id, user.name, room.id, room.name, !!user.accessGranted)}
+                              checked={userData.permissions?.[permission.id as keyof typeof userData.permissions] || false}
+                              disabled={userData.role === 'owner' || user.role !== 'owner'} 
+                              onCheckedChange={() => handleTogglePermission(
+                                userData.id, 
+                                permission.id, 
+                                userData.permissions?.[permission.id as keyof typeof userData.permissions] || false
+                              )}
                             />
                             <span className="text-sm font-medium">
-                              {user.accessGranted ? 'Có quyền' : 'Không có quyền'}
+                              {userData.permissions?.[permission.id as keyof typeof userData.permissions] 
+                                ? 'Có quyền' 
+                                : 'Không có quyền'}
                             </span>
                           </div>
                         </div>

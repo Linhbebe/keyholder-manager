@@ -36,7 +36,7 @@ const App = () => (
             <Route 
               path="/admin" 
               element={
-                <OwnerRoute>
+                <OwnerRoute requiredPermission="manageUsers">
                   <AdminDashboard />
                 </OwnerRoute>
               } 
