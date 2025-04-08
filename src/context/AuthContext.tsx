@@ -47,6 +47,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const navigate = useNavigate();
 
+  // Helper function to encode email for Firebase path (replace dots and other invalid characters)
+  const encodeEmailForFirebase = (email: string) => {
+    return email.replace(/\./g, ',');
+  };
+
   // Check if a user exists in the database
   const getUserRoleAndPermissions = async (userId: string, email: string, displayName: string) => {
     try {
@@ -90,25 +95,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           permissions: userData.permissions || {}
         };
       } else {
-        // Create new user with basic permissions
+        // Check if email is in authorized_emails list
+        const encodedEmail = encodeEmailForFirebase(email);
+        const authorizedEmailRef = ref(database, `authorized_emails/${encodedEmail}`);
+        const authorizedEmailSnapshot = await get(authorizedEmailRef);
+        
+        let permissions = {
+          manageUsers: false,
+          manageAccess: false,
+          viewLogs: true,
+          manageDoors: false
+        };
+        
+        // If email was pre-authorized, use those permissions
+        if (authorizedEmailSnapshot.exists()) {
+          const authorizedData = authorizedEmailSnapshot.val();
+          permissions = authorizedData.permissions || permissions;
+          
+          // Update authorized email status to registered
+          await set(ref(database, `authorized_emails/${encodedEmail}/status`), 'registered');
+        }
+        
+        // Create new user with appropriate permissions
         const newUserData = {
           id: userId,
           name: displayName || 'Người dùng',
           email: email,
           role: 'user',
-          permissions: {
-            manageUsers: false,
-            manageAccess: false,
-            viewLogs: true,
-            manageDoors: false
-          },
+          permissions,
           createdAt: new Date().toISOString()
         };
         
         await set(userRef, newUserData);
         return {
           role: 'user',
-          permissions: newUserData.permissions
+          permissions
         };
       }
     } catch (error) {
@@ -201,6 +222,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(true);
       console.log('Attempting to register with:', { name, email, password: '***' });
       
+      // Check if email is in authorized list or is the owner email
+      if (email !== OWNER_EMAIL) {
+        const encodedEmail = encodeEmailForFirebase(email);
+        const authorizedEmailRef = ref(database, `authorized_emails/${encodedEmail}`);
+        const authorizedEmailSnapshot = await get(authorizedEmailRef);
+        
+        if (!authorizedEmailSnapshot.exists()) {
+          toast.error('Đăng ký thất bại', {
+            description: 'Email chưa được phép đăng ký. Vui lòng liên hệ với chủ sở hữu.',
+          });
+          setIsLoading(false);
+          return;
+        }
+      }
+      
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log('User created successfully:', userCredential.user.uid);
       
@@ -210,21 +246,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         console.log('Profile updated with name:', name);
         
-        // Save user to database with default role and permissions
+        // Get permissions from authorized emails if any
+        const encodedEmail = encodeEmailForFirebase(email);
+        const authorizedEmailRef = ref(database, `authorized_emails/${encodedEmail}`);
+        const authorizedEmailSnapshot = await get(authorizedEmailRef);
+        
+        let permissions = {
+          manageUsers: false,
+          manageAccess: false,
+          viewLogs: true,
+          manageDoors: false
+        };
+        
+        if (authorizedEmailSnapshot.exists()) {
+          const authorizedData = authorizedEmailSnapshot.val();
+          permissions = authorizedData.permissions || permissions;
+        }
+        
+        // Save user to database with appropriate role and permissions
         const userRef = ref(database, `users/${userCredential.user.uid}`);
         await set(userRef, {
           id: userCredential.user.uid,
           name: name,
           email: email,
-          role: 'user',
-          permissions: {
-            manageUsers: false,
-            manageAccess: false,
+          role: email === OWNER_EMAIL ? 'owner' : 'user',
+          permissions: email === OWNER_EMAIL ? {
+            manageUsers: true,
+            manageAccess: true,
             viewLogs: true,
-            manageDoors: false
-          },
+            manageDoors: true
+          } : permissions,
           createdAt: new Date().toISOString()
         });
+        
+        // Update authorized email status to registered
+        if (email !== OWNER_EMAIL && authorizedEmailSnapshot.exists()) {
+          await set(ref(database, `authorized_emails/${encodedEmail}/status`), 'registered');
+        }
         
         // Notify ESP32 about new user registration
         await sendESP32Notification({

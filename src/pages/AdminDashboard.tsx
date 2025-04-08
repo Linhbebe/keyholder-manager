@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui-custom/Card';
@@ -14,12 +13,13 @@ import Button from '@/components/ui-custom/Button';
 import { 
   Shield, Users, Key, Clock, History, Bell, 
   UserPlus, UserCheck, UserX, DoorOpen, Lock,
-  ShieldAlert, Search, LogOut, Home
+  ShieldAlert, Search, LogOut, Home, Mail
 } from 'lucide-react';
 import { database } from '@/lib/firebase';
 import { ref, onValue, get, set, remove, query, orderByChild, limitToLast } from 'firebase/database';
 import { grantRoomAccess, revokeRoomAccess } from '@/utils/esp32Utils';
 import { Link } from 'react-router-dom';
+import AuthorizedEmails from '@/components/AuthorizedEmails';
 
 interface UserData {
   id: string;
@@ -67,7 +67,6 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    // Fetch all users from database
     const usersRef = ref(database, 'users');
     const unsubscribeUsers = onValue(usersRef, (snapshot) => {
       const usersList: UserData[] = [];
@@ -85,7 +84,7 @@ const AdminDashboard: React.FC = () => {
             viewLogs: true,
             manageDoors: false
           },
-          accessGranted: true // Default for display
+          accessGranted: true
         });
       });
       
@@ -93,7 +92,6 @@ const AdminDashboard: React.FC = () => {
       setLoading(false);
     });
     
-    // Real-time listener for activities
     const recentActivitiesRef = query(
       ref(database, 'recent_activities'),
       orderByChild('timestamp'),
@@ -119,7 +117,6 @@ const AdminDashboard: React.FC = () => {
         });
       });
       
-      // Sort by timestamp (newest first)
       activities.sort((a, b) => {
         const dateA = new Date(a.formattedTime.split(', ')[0].split('/').reverse().join('-') + 'T' + a.formattedTime.split(', ')[1]);
         const dateB = new Date(b.formattedTime.split(', ')[0].split('/').reverse().join('-') + 'T' + b.formattedTime.split(', ')[1]);
@@ -158,7 +155,6 @@ const AdminDashboard: React.FC = () => {
   };
   
   const handleTogglePermission = async (userId: string, permissionId: string, currentValue: boolean) => {
-    // Don't allow changing owner permissions
     const targetUser = users.find(u => u.id === userId);
     if (targetUser?.role === 'owner') {
       toast.error('Không thể thay đổi quyền của chủ sở hữu');
@@ -166,16 +162,12 @@ const AdminDashboard: React.FC = () => {
     }
     
     try {
-      // Get current permissions
       const userPermissions = { ...(targetUser?.permissions || {}) };
       
-      // Update the specific permission
       userPermissions[permissionId as keyof typeof userPermissions] = !currentValue;
       
-      // Save to database
       await updateUserPermissions(userId, userPermissions);
       
-      // Update local state
       setUsers(users.map(u => {
         if (u.id === userId) {
           return { 
@@ -204,7 +196,6 @@ const AdminDashboard: React.FC = () => {
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Don't render if user is not authenticated or not an admin/owner
   if (!user || (user.role !== 'admin' && user.role !== 'owner')) {
     return (
       <Layout>
@@ -284,7 +275,7 @@ const AdminDashboard: React.FC = () => {
         </Card>
         
         <Tabs defaultValue="users" className="w-full">
-          <TabsList className="grid grid-cols-3 mb-8">
+          <TabsList className="grid grid-cols-4 mb-8">
             <TabsTrigger value="users" className="flex items-center gap-2"
               disabled={!user.permissions?.manageUsers && user.role !== 'owner'}>
               <Users className="h-4 w-4" />
@@ -294,6 +285,11 @@ const AdminDashboard: React.FC = () => {
               disabled={!user.permissions?.manageAccess && user.role !== 'owner'}>
               <Key className="h-4 w-4" />
               Phân quyền người dùng
+            </TabsTrigger>
+            <TabsTrigger value="authorized" className="flex items-center gap-2"
+              disabled={user.role !== 'owner'}>
+              <Mail className="h-4 w-4" />
+              Email ủy quyền
             </TabsTrigger>
             <TabsTrigger value="logs" className="flex items-center gap-2"
               disabled={!user.permissions?.viewLogs && user.role !== 'owner'}>
@@ -461,6 +457,20 @@ const AdminDashboard: React.FC = () => {
                 </Card>
               ))}
             </div>
+          </TabsContent>
+          
+          <TabsContent value="authorized" className="space-y-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Mail className="h-5 w-5 text-primary" />
+                Email ủy quyền
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Thêm email để ủy quyền cho người dùng mới đăng ký
+              </p>
+            </div>
+            
+            <AuthorizedEmails />
           </TabsContent>
           
           <TabsContent value="logs" className="space-y-6">
