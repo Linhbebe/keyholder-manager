@@ -319,7 +319,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const updateUserPermissions = async (userId: string, permissions: Record<string, boolean>) => {
+  const updateUserPermissions = async (userId: string, permissions: Record<string, boolean>): Promise<void> => {
     try {
       const userRef = ref(database, `users/${userId}/permissions`);
       await set(userRef, permissions);
@@ -339,11 +339,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       toast.success('Cập nhật quyền thành công');
-      return true;
     } catch (error) {
       console.error('Error updating permissions:', error);
       toast.error('Cập nhật quyền thất bại');
-      return false;
     }
   };
 
